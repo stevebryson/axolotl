@@ -321,6 +321,33 @@ body[data-uv="on"] {
   background: rgba(14, 42, 71, 0.08); font-size: 18px; cursor: pointer; color: var(--deep);
 }
 
+/* ---------- rename, photo, stickers, helper, fact ---------- */
+.pencil { font: inherit; font-size: 14px; background: transparent; border: 0; cursor: pointer; padding: 2px 4px; vertical-align: middle; opacity: 0.8; }
+.name-input {
+  font: inherit; font-size: 22px; font-weight: 800; width: 100%;
+  padding: 12px 14px; border-radius: var(--r-md); border: 2px solid var(--glass-line); background: #fff; color: var(--ink);
+}
+.name-input:focus { outline: 3px solid var(--aqua); outline-offset: 1px; }
+.dlg-body.photo { text-align: center; }
+.dlg-body.photo img { width: 100%; max-height: 62vh; object-fit: contain; border-radius: var(--r-md); box-shadow: var(--shadow); }
+.dlg-body.photo a.btn { display: inline-grid; place-items: center; text-decoration: none; }
+.stickers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.sticker {
+  background: #fff; border: 1px solid #d5e8ec; border-radius: var(--r-md); padding: 10px 6px;
+  display: grid; justify-items: center; gap: 4px; text-align: center; font-size: 12px;
+}
+.sticker .emoji { font-size: 32px; line-height: 1; }
+.sticker b { font-size: 12px; }
+.sticker small { font-size: 10px; color: #40515f; font-weight: 700; }
+.sticker.locked { opacity: 0.5; }
+.helper { margin: 6px 0 10px; }
+.helper .chips { margin-top: 4px; }
+.chip.dark { background: #e3f1f5; color: var(--deep); border-color: #c9dfe6; }
+.chip.dark[aria-checked="true"] { background: var(--deep-2); color: #fff; }
+.helper-out .punnett { margin-top: 8px; }
+.fact { background: #fff7d6; border-left: 5px solid #f2c94c; border-radius: var(--r-md); padding: 10px 12px; font-size: 14px; }
+.sheet-actions #card-photo { flex: 0 0 auto; padding-inline: 14px; }
+
 /* ---------- tips ---------- */
 #tip {
   position: fixed;

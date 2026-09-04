@@ -2,6 +2,9 @@ import {
   LOCI, MUTATION_RATE, phenotype, makeGenotype, cloneGenotype, isValidGenotype, offspring, punnettDistribution, camouflage,
 } from './genetics.js';
 import { pickName } from './names.js';
+import { MORPHS } from './genetics.js';
+
+const MORPHS_KEYS = MORPHS.map((m) => m.key);
 
 export const TANK = Object.freeze({
   width: 12, depth: 7, height: 5,
@@ -25,9 +28,33 @@ export const LIMITS = Object.freeze({
   heronMinSeconds: 40,
   heronMaxSeconds: 60,
   heronWarnSeconds: 4,
+  hatchSeconds: 7,
+  hatchStagger: 1.3,
 });
 
 const SAVE_VERSION = 2;
+
+/** Sticker badges. `hidden` ones are not listed until earned, to avoid spoiling morphs. */
+export const BADGES = Object.freeze([
+  { id: 'first_clutch', emoji: '🥚', name: 'First clutch',      text: 'Hatched your first six eggs.' },
+  { id: 'namer',        emoji: '✏️', name: 'Name giver',        text: 'Gave an axolotl a name of your own.' },
+  { id: 'pink',         emoji: '🩷', name: 'Pretty in pink',    text: 'Bred a leucistic axolotl.' },
+  { id: 'golden',       emoji: '⭐', name: 'Golden touch',      text: 'Bred a golden albino.', hidden: true },
+  { id: 'melanoid',     emoji: '🖤', name: 'Midnight',          text: 'Bred a melanoid.', hidden: true },
+  { id: 'axanthic',     emoji: '🩶', name: 'Silver lining',     text: 'Bred an axanthic.', hidden: true },
+  { id: 'copper',       emoji: '🟤', name: 'Copper coin',       text: 'Bred a copper.', hidden: true },
+  { id: 'glow',         emoji: '💚', name: 'Night light',       text: 'Bred a glowing axolotl.', hidden: true },
+  { id: 'carrier',      emoji: '🕵️', name: 'Secret revealed',   text: 'Two look-alike parents made a surprise colour.' },
+  { id: 'sharp',        emoji: '🎯', name: 'Sharp eye',         text: 'Predicted five clutches correctly.' },
+  { id: 'genius',       emoji: '🧬', name: 'Gene genius',       text: 'Predicted fifteen clutches correctly.' },
+  { id: 'mutant',       emoji: '⚡', name: 'Mutation spotter',  text: 'Hatched a baby with a mutation.' },
+  { id: 'dodger',       emoji: '🪶', name: 'Heron dodger',      text: 'Three heron visits with nobody caught.' },
+  { id: 'evolution',    emoji: '🌿', name: 'Evolution',         text: 'Reached pond generation five.' },
+  { id: 'rainbow',      emoji: '🌈', name: 'Rainbow tank',      text: 'Found every colour in the morph book.' },
+  { id: 'photographer', emoji: '📷', name: 'Say cheese',        text: 'Took a photo of an axolotl.' },
+]);
+
+const MORPH_BADGE = { leucistic: 'pink', golden: 'golden', melanoid: 'melanoid', axanthic: 'axanthic', copper: 'copper' };
 
 /**
  * Progression. Each level reveals more genes; everything outside the current level's gene list
@@ -35,36 +62,42 @@ const SAVE_VERSION = 2;
  * A level is passed with `needed` correct predictions, which brings the next level's arrivals.
  */
 export const LEVELS = Object.freeze([
-  { id: 1, name: 'One gene', genes: ['D'], choices: 2, needed: 2, punnett: true, odds: false,
+  { id: 1, name: 'One gene',
+    fact: 'Axolotls keep their feathery gills their whole life. Most salamanders lose them when they grow up.', genes: ['D'], choices: 2, needed: 2, punnett: true, odds: false,
     intro: 'Every axolotl has two beads for the Pink gene: one from Mum, one from Dad. A big D is strong. Pink only shows when BOTH beads are small.',
     task: 'Breed your pair and guess the colour of most babies. Get it right twice to unlock the next gene.' },
-  { id: 2, name: 'Two genes', genes: ['D', 'A'], choices: 3, needed: 2, punnett: false, odds: false,
+  { id: 2, name: 'Two genes',
+    fact: 'Wild axolotls come from just one place on Earth: the lakes around Mexico City.', genes: ['D', 'A'], choices: 3, needed: 2, punnett: false, odds: false,
     intro: 'Two new axolotls just arrived from the shop. One is golden: it has two small a beads. Golden is stronger than pink: an albino body can\'t make ANY colour, so pink is hidden underneath.',
     task: 'Breed the golden one and guess again. Which colour wins when a baby gets both?',
     arrivals: [
       { sex: 'F', genotype: { A: [0, 0], D: [1, 0] } },
       { sex: 'M', genotype: { A: [1, 0], D: [1, 0] } },
     ] },
-  { id: 3, name: 'Secret carriers', genes: ['D', 'A', 'M', 'AX'], choices: 4, needed: 2, punnett: false, odds: true,
+  { id: 3, name: 'Secret carriers',
+    fact: 'An axolotl can regrow a whole leg. Even bits of its heart and brain grow back.', genes: ['D', 'A', 'M', 'AX'], choices: 4, needed: 2, punnett: false, odds: true,
     intro: 'Meet the Black gene and the Grey gene. Some axolotls look wild but secretly carry small beads. Now you can see the real odds for each colour.',
     task: 'Find the secret carriers on their cards and pair them up to reveal hidden colours.',
     arrivals: [
       { sex: 'M', genotype: { M: [0, 0], AX: [1, 0] } },
       { sex: 'F', genotype: { M: [1, 0], AX: [1, 0], D: [1, 0] } },
     ] },
-  { id: 4, name: 'A different rule', genes: ['D', 'A', 'M', 'AX', 'G'], choices: 4, needed: 2, punnett: false, odds: true,
+  { id: 4, name: 'A different rule',
+    fact: 'The glow gene was borrowed from a jellyfish. Scientists use it to watch cells regrow.', genes: ['D', 'A', 'M', 'AX', 'G'], choices: 4, needed: 2, punnett: false, odds: true,
     intro: 'The Glow gene breaks the rule: it is strong, not hidden. ONE big G is enough to glow green under UV light. The UV lamp is now yours.',
     task: 'Breed the glowing newcomer and switch on the lamp to see who inherited the glow.',
     arrivals: [
       { sex: 'M', genotype: { G: [1, 0], D: [1, 0] } },
     ] },
-  { id: 5, name: 'Mutations', genes: ['D', 'A', 'M', 'AX', 'G', 'CU'], choices: 4, needed: 2, punnett: false, odds: true, mutation: true,
+  { id: 5, name: 'Mutations',
+    fact: 'Nearly every pet axolotl in the world is descended from a few animals collected in 1863.', genes: ['D', 'A', 'M', 'AX', 'G', 'CU'], choices: 4, needed: 2, punnett: false, odds: true, mutation: true,
     intro: 'Very rarely a bead flips on its own when an egg is made. That is a mutation, and it is how brand-new colours first appeared in nature. The Copper gene has also arrived.',
     task: 'Keep breeding. Watch for the purple "mutation!" tag on a baby.',
     arrivals: [
       { sex: 'F', genotype: { CU: [0, 0], M: [1, 0] } },
     ] },
-  { id: 6, name: 'Wild pond', genes: ['D', 'A', 'M', 'AX', 'G', 'CU'], choices: 4, needed: 0, punnett: false, odds: true, mutation: true, pond: true,
+  { id: 6, name: 'Wild pond',
+    fact: 'Wild axolotls are critically endangered. There may be fewer than a thousand left in the lake.', genes: ['D', 'A', 'M', 'AX', 'G', 'CU'], choices: 4, needed: 0, punnett: false, odds: true, mutation: true, pond: true,
     intro: 'The Wild pond is open. A heron hunts every minute or so. Axolotls that match the pond floor are hard to spot; bright ones get eaten. Survivors have the babies.',
     task: 'Pick a pond floor, press Next generation a few times, and watch the colours shift. That is evolution.' },
 ]);
@@ -82,6 +115,7 @@ export class Axolotl {
     this.parents = o.parents ?? null;
     this.age = o.age ?? 1; // 0 baby .. 1 adult
     this.hunger = o.hunger ?? 0.3; // 0 full .. 1 starving
+    this.hatchIn = o.hatchIn ?? 0; // seconds until this egg hatches; 0 = already hatched
     this.x = o.x ?? 0;
     this.z = o.z ?? 0;
     this.heading = o.heading ?? 0;
@@ -96,6 +130,10 @@ export class Axolotl {
 
   get adult() {
     return this.age >= 1;
+  }
+
+  get egg() {
+    return this.hatchIn > 0;
   }
 
   get scale() {
@@ -115,6 +153,7 @@ export class Axolotl {
       id: this.id, name: this.name, sex: this.sex, genotype: this.genotype, generation: this.generation,
       parents: this.parents, age: +this.age.toFixed(3), hunger: +this.hunger.toFixed(3),
       x: +this.x.toFixed(2), z: +this.z.toFixed(2), heading: +this.heading.toFixed(3),
+      hatchIn: +this.hatchIn.toFixed(2),
     };
   }
 }
@@ -131,9 +170,12 @@ export class Game {
     this.substrate = 'gravel';
     this.quiz = { asked: 0, correct: 0 };
     this.tutorialSeen = false;
-    this.settings = { sound: true, tipsSeen: [] };
+    this.settings = { sound: true, tipsSeen: [], gentle: true };
     this.level = 1;
     this.levelCorrect = 0;
+    this.badges = new Set();
+    this.heronDodged = 0;
+    this.pendingClutch = null;
     this.selectedId = null;
     this.heron = { phase: 'idle', timer: rand(LIMITS.heronMinSeconds, LIMITS.heronMaxSeconds), progress: 0 };
     this.listeners = new Map();
@@ -164,7 +206,10 @@ export class Game {
     this.quiz = { asked: 0, correct: 0 };
     this.level = 1;
     this.levelCorrect = 0;
-    this.settings = { sound: this.settings.sound, tipsSeen: [] };
+    this.settings = { sound: this.settings.sound, tipsSeen: [], gentle: this.settings.gentle };
+    this.badges = new Set();
+    this.heronDodged = 0;
+    this.pendingClutch = null;
     this.selectedId = null;
     /* Level 1 starter pair: both carry one hidden Pink bead, so the first clutch is a clean 3:1. */
     this.addAxolotl({ sex: 'F', x: -2, z: 0.5, age: 1, genotype: makeGenotype({ D: [1, 0] }) });
@@ -186,12 +231,59 @@ export class Game {
       x: o.x ?? rand(-3, 3),
       z: o.z ?? rand(-2, 2),
       heading: o.heading ?? rand(0, Math.PI * 2),
+      hatchIn: o.hatchIn ?? 0,
     });
     this.population.push(a);
+    if (a.egg) {
+      this.emit('added', { axolotl: a, newMorph: false });
+      return a;
+    }
     const isNew = !this.dex.has(a.pheno.dexKey);
     this.dex.add(a.pheno.dexKey);
     this.emit('added', { axolotl: a, newMorph: isNew });
+    if (isNew) this.checkMorphBadges(a);
     return a;
+  }
+
+  /** Called when an egg cracks open: now it counts as a real axolotl. */
+  hatch(a) {
+    a.hatchIn = 0;
+    const isNew = !this.dex.has(a.pheno.dexKey);
+    this.dex.add(a.pheno.dexKey);
+    if (isNew) this.checkMorphBadges(a);
+    this.emit('hatched', { axolotl: a, newMorph: isNew });
+    const clutch = this.pendingClutch;
+    if (clutch && clutch.babies.every((b) => !b.egg)) {
+      this.pendingClutch = null;
+      this.emit('clutchHatched', clutch);
+    }
+  }
+
+  rename(id, name) {
+    const a = this.get(id);
+    const clean = String(name ?? '').replace(/\s+/g, ' ').trim().slice(0, 16);
+    if (!a || !clean || clean === a.name) return false;
+    a.name = clean;
+    this.award('namer');
+    this.emit('population');
+    return true;
+  }
+
+  /* ---------- badges ---------- */
+  award(id) {
+    if (this.badges.has(id) || !BADGES.some((b) => b.id === id)) return false;
+    this.badges.add(id);
+    this.emit('badge', BADGES.find((b) => b.id === id));
+    this.emit('population');
+    return true;
+  }
+
+  checkMorphBadges(a) {
+    const key = a.pheno.key;
+    if (a.generation > 0 && MORPH_BADGE[key]) this.award(MORPH_BADGE[key]);
+    if (a.generation > 0 && a.pheno.gfp) this.award('glow');
+    const allColours = MORPHS_KEYS.every((k) => this.dex.has(k) || this.dex.has(`${k}+gfp`));
+    if (allColours) this.award('rainbow');
   }
 
   removeAxolotl(id) {
@@ -317,6 +409,7 @@ export class Game {
   canBreed(a, b) {
     if (!a || !b || a.id === b.id) return { ok: false, reason: 'Pick two different axolotls.' };
     if (!a.adult || !b.adult) return { ok: false, reason: 'Both need to be grown up first.' };
+    if (this.population.some((x) => x.egg)) return { ok: false, reason: 'Wait for the eggs in the nest to hatch first.' };
     if (a.sex === b.sex) return { ok: false, reason: 'Breeding needs one female and one male.' };
     if (this.population.length + LIMITS.clutch > LIMITS.population) {
       return { ok: false, reason: `Tank is full. Release some axolotls first (max ${LIMITS.population}).` };
@@ -346,6 +439,9 @@ export class Game {
     const babies = [];
     const counts = new Map();
     const mutationRate = this.mutationRate;
+    /* Nest sits beside the mother, away from the walls. */
+    const nx = clamp(mother.x + (mother.x > 0 ? -1.2 : 1.2), -4.6, 4.6);
+    const nz = clamp(mother.z + 0.6, -2.4, 2.4);
     for (let i = 0; i < LIMITS.clutch; i++) {
       const child = offspring(mother.genotype, father.genotype, Math.random, mutationRate);
       const ang = (i / LIMITS.clutch) * Math.PI * 2;
@@ -355,8 +451,9 @@ export class Game {
         parents: [mother.id, father.id],
         age: 0,
         hunger: 0.6,
-        x: clamp(mother.x + Math.cos(ang) * 0.9, -5, 5),
-        z: clamp(mother.z + Math.sin(ang) * 0.9, -2.8, 2.8),
+        x: nx + Math.cos(ang) * 0.32,
+        z: nz + Math.sin(ang) * 0.32,
+        hatchIn: LIMITS.hatchSeconds + i * LIMITS.hatchStagger,
       });
       baby.mutated = child.mutated;
       babies.push(baby);
@@ -366,8 +463,15 @@ export class Game {
     const winners = [...counts.entries()].filter(([, n]) => n === max).map(([k]) => k);
     const correct = guessDexKey != null && winners.includes(guessDexKey);
     const leveledUp = guessDexKey != null ? this.recordPrediction(correct) : false;
+    this.award('first_clutch');
+    if (this.quiz.correct >= 5) this.award('sharp');
+    if (this.quiz.correct >= 15) this.award('genius');
+    if (babies.some((b) => b.mutated?.length)) this.award('mutant');
+    if (babies.some((b) => b.pheno.key !== mother.pheno.key && b.pheno.key !== father.pheno.key)) this.award('carrier');
+    const result = { babies, correct, winners, mother, father, leveledUp, guess: guessDexKey };
+    this.pendingClutch = result;
     this.emit('population');
-    return { babies, correct, winners, mother, father, leveledUp };
+    return result;
   }
 
   /* ---------- pond: selection and generations ---------- */
@@ -383,12 +487,14 @@ export class Game {
     const order = [...this.population].sort(() => Math.random() - 0.5);
     for (const a of order) {
       if (this.population.length - victims.length <= floor) break;
+      if (a.egg) continue;
       if (a.inCave) { safe.push(a); continue; }
       const contrast = 1 - this.camo(a);
       const p = 0.75 * Math.pow(contrast, 1.4);
       if (Math.random() < p) victims.push(a);
     }
     for (const v of victims) this.removeAxolotl(v.id);
+    if (victims.length === 0) { this.heronDodged++; if (this.heronDodged >= 3) this.award('dodger'); } else this.heronDodged = 0;
     const summary = { victims, hidden: safe.length, survivors: this.population.length };
     this.emit('heron', summary);
     return summary;
@@ -429,6 +535,7 @@ export class Game {
     }
     this.generation = nextGen;
     this.recordHistory();
+    if (nextGen >= 5) this.award('evolution');
     this.heron = { phase: 'idle', timer: rand(LIMITS.heronMinSeconds, LIMITS.heronMaxSeconds), progress: 0 };
     this.emit('population');
     this.emit('generation', { generation: nextGen, retired: retiring.length, born: children.length });
@@ -456,6 +563,11 @@ export class Game {
   }
 
   updateAxolotl(a, dt) {
+    if (a.egg) {
+      a.hatchIn -= dt;
+      if (a.hatchIn <= 0) this.hatch(a);
+      return;
+    }
     if (!a.adult) {
       a.age = Math.min(1, a.age + dt / LIMITS.growSeconds);
       if (a.adult) this.emit('grownUp', a);
@@ -572,8 +684,10 @@ export class Game {
     const n = this.population.length;
     for (let i = 0; i < n; i++) {
       const a = this.population[i];
+      if (a.egg) continue;
       for (let j = i + 1; j < n; j++) {
         const b = this.population[j];
+        if (b.egg) continue;
         const min = 0.45 * (a.scale + b.scale);
         const dx = b.x - a.x;
         const dz = b.z - a.z;
@@ -631,6 +745,8 @@ export class Game {
       settings: this.settings,
       level: this.level,
       levelCorrect: this.levelCorrect,
+      badges: [...this.badges],
+      heronDodged: this.heronDodged,
     };
   }
 
@@ -645,7 +761,7 @@ export class Game {
     this.population = pop.map((p) => new Axolotl({ ...p, genotype: cloneGenotype(p.genotype) }));
     this.pellets = [];
     this.dex = new Set(Array.isArray(data.dex) ? data.dex : []);
-    for (const a of this.population) this.dex.add(a.pheno.dexKey);
+    for (const a of this.population) if (!a.egg) this.dex.add(a.pheno.dexKey);
     this.history = Array.isArray(data.history) ? data.history : [];
     this.generation = Number.isInteger(data.generation) ? data.generation : 0;
     this.nextId = Math.max(Number.isInteger(data.nextId) ? data.nextId : 1, ...this.population.map((a) => a.id + 1));
@@ -656,7 +772,11 @@ export class Game {
     this.settings = {
       sound: data.settings?.sound !== false,
       tipsSeen: Array.isArray(data.settings?.tipsSeen) ? data.settings.tipsSeen.filter((t) => typeof t === 'string') : [],
+      gentle: data.settings?.gentle !== false,
     };
+    this.badges = new Set(Array.isArray(data.badges) ? data.badges.filter((b) => BADGES.some((x) => x.id === b)) : []);
+    this.heronDodged = Number.isInteger(data.heronDodged) ? data.heronDodged : 0;
+    this.pendingClutch = null;
     this.level = level;
     this.levelCorrect = Number.isInteger(data.levelCorrect) ? data.levelCorrect : 0;
     if (this.mode === 'pond' && !this.pondUnlocked) { this.mode = 'tank'; this.substrate = 'gravel'; }

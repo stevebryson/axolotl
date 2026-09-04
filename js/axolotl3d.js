@@ -257,6 +257,37 @@ export function buildAxolotl(pheno) {
   return { group, hit, update, setGlow, skin, fin, ownsMaterials: pheno.gfp };
 }
 
+const EGG_JELLY = new THREE.MeshPhysicalMaterial({ color: '#dff6ff', transparent: true, opacity: 0.55, roughness: 0.15, clearcoat: 1, clearcoatRoughness: 0.1, depthWrite: false });
+const EGG_GEO = new THREE.SphereGeometry(0.17, 14, 10);
+const EMBRYO_GEO = new THREE.SphereGeometry(0.07, 8, 6);
+const EGG_SHINE = new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.8 });
+const EGG_SHINE_GEO = new THREE.SphereGeometry(0.03, 6, 5);
+
+/** Jelly egg with a tinted embryo inside (its future morph colour). Returns { group, update(hatchIn, t) }. */
+export function buildEgg(pheno) {
+  const group = new THREE.Group();
+  const embryo = new THREE.Mesh(EMBRYO_GEO, new THREE.MeshStandardMaterial({ color: pheno.morph.body, roughness: 0.6 }));
+  embryo.scale.set(1, 0.7, 1.3);
+  group.add(embryo);
+  const jelly = new THREE.Mesh(EGG_GEO, EGG_JELLY);
+  jelly.renderOrder = 3;
+  group.add(jelly);
+  const shine = new THREE.Mesh(EGG_SHINE_GEO, EGG_SHINE);
+  shine.position.set(-0.06, 0.09, 0.08);
+  group.add(shine);
+  const update = (hatchIn, t) => {
+    /* Wobble harder as hatching approaches. */
+    const urgency = Math.max(0, 1 - hatchIn / 4);
+    const wob = Math.sin(t * (6 + urgency * 14)) * (0.04 + urgency * 0.22);
+    group.rotation.z = wob;
+    group.rotation.x = Math.cos(t * 5) * 0.05 * (0.5 + urgency);
+    const squish = 1 + Math.abs(wob) * 0.4;
+    group.scale.set(1 / Math.sqrt(squish), squish, 1 / Math.sqrt(squish));
+    embryo.rotation.y = t * 0.8;
+  };
+  return { group, update, dispose: () => embryo.material.dispose() };
+}
+
 export function buildPellet() {
   const mat = new THREE.MeshStandardMaterial({ color: '#7a4a2a', roughness: 0.9 });
   return new THREE.Mesh(GEO.pellet, mat);

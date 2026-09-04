@@ -36,7 +36,7 @@ function boot() {
   const controls = new Controls({ canvas, joystickEl: document.getElementById('joystick'), game, tank });
 
   tank.syncPopulation(game);
-  for (const ev of ['added', 'removed']) game.on(ev, () => tank.syncPopulation(game));
+  for (const ev of ['added', 'removed', 'hatched']) game.on(ev, () => tank.syncPopulation(game));
   game.on('pellet', () => tank.syncPopulation(game));
   game.on('ate', () => tank.syncPopulation(game));
 

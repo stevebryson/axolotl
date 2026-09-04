@@ -1,5 +1,5 @@
 /* Axolotl Gene Lab service worker: precache the app shell, serve cache-first, clean old versions. */
-const VERSION = 'axolab-v2.2.0';
+const VERSION = 'axolab-v2.3.0';
 const SHELL = [
   './',
   './index.html',

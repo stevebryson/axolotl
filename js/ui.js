@@ -1,5 +1,5 @@
 import { LOCI, allDexEntries, MORPHS } from './genetics.js';
-import { SUBSTRATES, LIMITS, LEVELS } from './game.js';
+import { SUBSTRATES, LIMITS, LEVELS, BADGES } from './game.js';
 import { Tips } from './tips.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -41,20 +41,25 @@ function legend(loci) {
 }
 
 /** 2×2 Punnett square for a single locus: mother's beads across the top, father's down the side. */
-function punnettSquare(locus, mother, father, dist) {
+function punnettSquare(locus, mother, father, { title = 'Why?' } = {}) {
   const m = mother.genotype[locus.id];
   const f = father.genotype[locus.id];
-  const cell = (a, b) => `<td class="${a === 0 && b === 0 ? 'shows' : ''}">${bead(locus, a)}${bead(locus, b)}</td>`;
-  const rec = dist.find((d) => d.dexKey === RECESSIVE_MORPH[locus.id]);
+  const dominant = locus.kind === 'dominant';
+  const shows = (a, b) => (dominant ? a === 1 || b === 1 : a === 0 && b === 0);
+  const cell = (a, b) => `<td class="${shows(a, b) ? 'shows' : ''}">${bead(locus, a)}${bead(locus, b)}</td>`;
+  const pairs = [[m[0], f[0]], [m[1], f[0]], [m[0], f[1]], [m[1], f[1]]];
+  const p = pairs.filter(([a, b]) => shows(a, b)).length / 4;
+  const outcome = dominant ? 'glow' : (locus.morph.toLowerCase());
   return `<div class="punnett">
-    <h3>Why?</h3>
+    <h3>${esc(title)}</h3>
     <table>
       <tr><th></th><th><small>Mum</small>${bead(locus, m[0])}</th><th><small>Mum</small>${bead(locus, m[1])}</th></tr>
       <tr><th><small>Dad</small>${bead(locus, f[0])}</th>${cell(m[0], f[0])}${cell(m[1], f[0])}</tr>
       <tr><th><small>Dad</small>${bead(locus, f[1])}</th>${cell(m[0], f[1])}${cell(m[1], f[1])}</tr>
     </table>
-    <p>Each baby takes one bead from Mum and one from Dad. The four boxes are the four ways that can happen.${
-      rec ? ` Only a box with two small beads comes out ${esc(rec.name.toLowerCase())}: about ${pct(rec.p)} of babies.` : ''}</p>
+    <p>Each baby takes one bead from Mum and one from Dad. The four boxes are the four ways that can happen. ${
+      p === 0 ? `No box ${dominant ? 'has a big G' : 'has two small beads'}, so no baby will ${esc(outcome)}.`
+        : `${p === 1 ? 'Every box' : 'The pink box' + (p > 0.25 ? 'es' : '')} ${dominant ? 'has a big G' : 'has two small beads'}: about ${pct(p)} of babies will ${dominant ? 'glow' : `be ${esc(outcome)}`}.`}</p>
   </div>`;
 }
 
@@ -72,6 +77,7 @@ export class UI {
     this.onReset = onReset;
     this.uv = false;
     this.pendingLevel = null;
+    this.pendingHatch = null;
     this.toastEl = $('#toast');
     this.card = $('#card');
     this.hint = $('#hint');
@@ -79,6 +85,7 @@ export class UI {
     this.levelPill = $('#level-pill');
     this.dlg = {
       breed: $('#dlg-breed'), dex: $('#dlg-dex'), stats: $('#dlg-stats'), menu: $('#dlg-menu'), help: $('#dlg-help'), level: $('#dlg-level'),
+      photo: $('#dlg-photo'), stickers: $('#dlg-stickers'),
     };
     this.tips = new Tips({ game, root: $('#hud') });
     this.idleTimer = 0;
@@ -123,6 +130,13 @@ export class UI {
       if (newMorph && axolotl.generation > 0) { this.sound.sparkle(); this.toast(`New morph discovered: ${axolotl.pheno.name}!`, 'good'); this.tips.show('dex', { delay: 1500 }); }
       this.tank.popIn(axolotl.id);
     });
+    g.on('hatched', ({ axolotl, newMorph }) => {
+      this.sound.pop();
+      this.tank.popIn(axolotl.id);
+      if (newMorph) { this.sound.sparkle(); this.toast(`New colour: ${axolotl.pheno.name}!`, 'good'); this.tips.show('dex', { delay: 1500 }); }
+    });
+    g.on('clutchHatched', (result) => this.showClutchResult(result));
+    g.on('badge', (b) => this.toast(`Sticker earned: ${b.emoji} ${b.name}`, 'good', 4000));
     g.on('ate', ({ axolotl }) => { this.sound.eat(); if (axolotl.id === g.selectedId) this.renderCard(axolotl); });
     g.on('heronWarning', () => { this.sound.alarm(); this.toast('A heron is coming! Hide in the cave!', 'warn'); this.tips.show('heron', { delay: 100 }); });
     g.on('heron', (s) => {
@@ -130,7 +144,10 @@ export class UI {
       if (s.victims.length === 0) this.toast(`The heron left hungry. ${s.hidden ? `${s.hidden} hid in the cave.` : 'Everyone blended in!'}`, 'good');
       else {
         const names = s.victims.map((v) => `${v.name} (${v.pheno.name.toLowerCase()})`).join(', ');
-        this.toast(`The heron spotted ${names} on the ${g.substrateInfo.name.toLowerCase()}.`, 'bad', 5000);
+        const floor = g.substrateInfo.name.toLowerCase();
+        this.toast(g.settings.gentle
+          ? `The heron spotted ${names} on the ${floor} and chased them off to another pond.`
+          : `The heron spotted ${names} on the ${floor}. Gone.`, 'bad', 5000);
       }
       this.updateNextGenButton();
       this.tips.show('nextGen', { delay: 2500 });
@@ -189,6 +206,7 @@ export class UI {
       <h3>Your task</h3>
       <p>${esc(info.task)}</p>
       ${g.maxLevel ? '' : `<p class="score">Get ${info.needed} predictions right to unlock level ${info.id + 1}.</p>`}
+      ${info.fact ? `<p class="fact"><b>Did you know?</b> ${esc(info.fact)}</p>` : ''}
       <div class="row"><button type="button" class="btn" data-close>Let's go</button></div>
     </div>`;
     $('[data-close]', d).addEventListener('click', () => {
@@ -293,7 +311,7 @@ export class UI {
       <div class="sheet-head">
         ${swatch(a.pheno.morph, a.pheno.gfp)}
         <div class="sheet-title">
-          <h2>${esc(a.name)} ${sexIcon(a.sex)}</h2>
+          <h2>${esc(a.name)} ${sexIcon(a.sex)} <button type="button" class="pencil" id="card-rename" aria-label="Rename">✏️</button></h2>
           <p>${esc(a.pheno.name)} ${tags}</p>
         </div>
       </div>
@@ -302,13 +320,16 @@ export class UI {
       ${camo}
       <div class="sheet-actions">
         <button type="button" class="btn" id="card-breed" ${breedable ? '' : 'disabled'}>Breed</button>
-        <button type="button" class="btn quiet" id="card-story">About this morph</button>
+        <button type="button" class="btn quiet" id="card-story">About</button>
+        <button type="button" class="btn quiet" id="card-photo" aria-label="Photo">📷</button>
         <button type="button" class="btn danger small" id="card-release">Release</button>
       </div>
       <p class="how">Tap the floor to send ${esc(a.name)} there, or press and drag to steer.</p>`;
     $('.close', this.card).addEventListener('click', () => g.select(null));
     $('#card-breed', this.card).addEventListener('click', () => this.openBreed(a));
     $('#card-story', this.card).addEventListener('click', () => this.openStory(a));
+    $('#card-rename', this.card).addEventListener('click', () => this.openRename(a));
+    $('#card-photo', this.card).addEventListener('click', () => this.openPhoto(a));
     $('#card-release', this.card).addEventListener('click', () => {
       if (g.population.length <= 2) { this.toast('Keep at least two, or the tank gets lonely.', 'warn'); return; }
       g.removeAxolotl(a.id);
@@ -320,6 +341,124 @@ export class UI {
       btn.title = g.population.length + LIMITS.clutch > LIMITS.population ? 'Tank full' : `No grown-up ${a.sex === 'F' ? 'male' : 'female'} to breed with`;
     }
     this.card.hidden = false;
+  }
+
+  openRename(a) {
+    const d = this.dlg.menu;
+    d.innerHTML = `<div class="dlg-body">
+      <h2>Name your axolotl</h2>
+      <input type="text" class="name-input" maxlength="16" value="${esc(a.name)}" aria-label="Name" autocomplete="off" autocapitalize="words" enterkeyhint="done" />
+      <div class="row">
+        <button type="button" class="btn quiet" data-close>Cancel</button>
+        <button type="button" class="btn" data-save>Save</button>
+      </div>
+    </div>`;
+    const input = $('.name-input', d);
+    const save = () => {
+      if (this.game.rename(a.id, input.value)) { this.sound.pop(); this.toast(`Hello, ${this.game.get(a.id).name}!`, 'good'); }
+      d.close();
+    };
+    $('[data-close]', d).addEventListener('click', () => d.close());
+    $('[data-save]', d).addEventListener('click', save);
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') save(); });
+    d.showModal();
+    input.focus();
+    input.select();
+  }
+
+  /** Compose a shareable picture: a crop of the tank around the axolotl plus a name/morph/bead card. */
+  openPhoto(a) {
+    const g = this.game;
+    const loci = g.visibleLoci;
+    const src = this.tank.canvas;
+    this.tank.render(g, 0); // fresh frame right before reading pixels
+    const pos = this.tank.project(a.x, 0.3 * a.scale, a.z);
+    const side = Math.round(Math.min(src.width, src.height) * 0.7);
+    const sx = Math.max(0, Math.min(src.width - side, pos.x * src.width - side / 2));
+    const sy = Math.max(0, Math.min(src.height - side, pos.y * src.height - side / 2));
+
+    const W = 900;
+    const H = 1290;
+    const out = document.createElement('canvas');
+    out.width = W;
+    out.height = H;
+    const ctx = out.getContext('2d');
+    ctx.fillStyle = '#0e2a47';
+    ctx.fillRect(0, 0, W, H);
+    ctx.drawImage(src, sx, sy, side, side, 0, 0, W, W);
+
+    /* Card. */
+    ctx.fillStyle = '#eef9fc';
+    ctx.fillRect(0, W, W, H - W);
+    const font = (px, weight = 800) => { ctx.font = `${weight} ${px}px ui-rounded, "SF Pro Rounded", "Segoe UI", system-ui, sans-serif`; };
+    ctx.fillStyle = a.pheno.morph.body;
+    ctx.beginPath(); ctx.arc(70, W + 70, 40, 0, Math.PI * 2); ctx.fill();
+    ctx.lineWidth = 6; ctx.strokeStyle = a.pheno.gfp ? '#5cff7a' : '#ffffff'; ctx.stroke();
+    ctx.fillStyle = '#1b1b22';
+    font(56); ctx.fillText(`${a.name} ${sexIcon(a.sex)}`, 130, W + 66);
+    font(32, 700); ctx.fillStyle = '#40515f'; ctx.fillText(`${a.pheno.name} · Generation ${a.generation}`, 130, W + 110);
+
+    /* Beads: three per row. */
+    font(26, 800);
+    loci.forEach((l, idx) => {
+      const x = 40 + (idx % 3) * 290;
+      const y = W + 195 + Math.floor(idx / 3) * 100;
+      const pair = [...a.genotype[l.id]].sort((p, q) => q - p);
+      ctx.fillStyle = '#2f4050';
+      ctx.fillText(l.name, x, y - 40);
+      pair.forEach((v, i) => {
+        const cx = x + 22 + i * 52;
+        const strong = v === 1;
+        ctx.beginPath(); ctx.arc(cx, y, 22, 0, Math.PI * 2);
+        ctx.fillStyle = strong ? (l.kind === 'dominant' ? '#35d25d' : '#163b62') : '#ffffff';
+        ctx.fill();
+        ctx.lineWidth = 3; ctx.strokeStyle = l.kind === 'dominant' && strong ? '#1f9a40' : '#163b62'; ctx.stroke();
+        ctx.fillStyle = strong ? (l.kind === 'dominant' ? '#063d15' : '#ffffff') : '#163b62';
+        ctx.textAlign = 'center';
+        ctx.fillText(v ? l.big : l.small, cx, y + 9);
+        ctx.textAlign = 'left';
+      });
+    });
+    font(22, 700); ctx.fillStyle = '#7a8a96';
+    ctx.fillText('Axolotl Gene Lab', 40, H - 30);
+
+    const d = this.dlg.photo;
+    const url = out.toDataURL('image/png');
+    d.innerHTML = `<div class="dlg-body photo">
+      <img src="${url}" alt="Photo of ${esc(a.name)}" />
+      <div class="row">
+        <button type="button" class="btn" data-share>Share</button>
+        <a class="btn quiet" data-save download="${esc(a.name)}-axolotl.png" href="${url}">Save</a>
+        <button type="button" class="btn quiet" data-close>Close</button>
+      </div>
+    </div>`;
+    $('[data-close]', d).addEventListener('click', () => d.close());
+    $('[data-share]', d).addEventListener('click', async () => {
+      try {
+        const blob = await new Promise((res) => out.toBlob(res, 'image/png'));
+        const file = new File([blob], `${a.name}-axolotl.png`, { type: 'image/png' });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) await navigator.share({ files: [file], title: `${a.name} the axolotl` });
+        else $('[data-save]', d).click();
+      } catch { /* user cancelled the share sheet */ }
+    });
+    this.game.award('photographer');
+    this.sound.pop();
+    d.showModal();
+  }
+
+  openStickers() {
+    const d = this.dlg.stickers;
+    const earned = this.game.badges;
+    const list = BADGES.filter((b) => earned.has(b.id) || !b.hidden);
+    d.innerHTML = `<div class="dlg-body">
+      <h2>Stickers</h2>
+      <p>${earned.size} of ${BADGES.length} collected.</p>
+      <div class="stickers">${list.map((b) => `
+        <div class="sticker ${earned.has(b.id) ? '' : 'locked'}"><span class="emoji">${earned.has(b.id) ? b.emoji : '❔'}</span><b>${esc(b.name)}</b><small>${esc(earned.has(b.id) ? b.text : b.text)}</small></div>`).join('')}</div>
+      <div class="row"><button type="button" class="btn quiet" data-close>Close</button></div>
+    </div>`;
+    $('[data-close]', d).addEventListener('click', () => d.close());
+    d.showModal();
   }
 
   openStory(a) {
@@ -399,6 +538,9 @@ export class UI {
       <h2>Look at the gene beads</h2>
       <div class="parents">${parentCard(a)}${parentCard(b)}</div>
       ${legend(loci)}
+      ${loci.length > 1 ? `<div class="helper"><p class="score">Not sure? Tap a gene to see its four boxes:</p>
+        <div class="chips">${loci.map((l) => `<button type="button" class="chip dark" data-locus="${l.id}">${esc(l.name)}</button>`).join('')}</div>
+        <div class="helper-out"></div></div>` : ''}
       <h3>Which colour will MOST of the babies be?</h3>
       <div class="choices">${options.map((o) => `
         <button type="button" class="choice" data-key="${o.dexKey}" aria-pressed="false">${swatch(o.morph, o.gfp)}${esc(o.name)}</button>`).join('')}</div>
@@ -414,15 +556,24 @@ export class UI {
         $('[data-hatch]', d).disabled = false;
       });
     }
+    const mother = a.sex === 'F' ? a : b;
+    const father = a.sex === 'F' ? b : a;
+    for (const chip of d.querySelectorAll('[data-locus]')) {
+      chip.addEventListener('click', () => {
+        const l = LOCUS[chip.dataset.locus];
+        for (const c of d.querySelectorAll('[data-locus]')) c.setAttribute('aria-checked', String(c === chip));
+        $('.helper-out', d).innerHTML = punnettSquare(l, mother, father, { title: `${l.name}` });
+      });
+    }
     $('[data-back]', d).addEventListener('click', () => this.openBreed(a));
     $('[data-hatch]', d).addEventListener('click', () => this.hatchStep(a, b, guess, options, dist));
   }
 
+  /** Lay the eggs in the tank. The result dialog opens once the last egg has hatched. */
   hatchStep(a, b, guess, options, dist) {
     const d = this.dlg.breed;
     const g = this.game;
     const info = g.levelInfo; // captured before breed() may level up
-    const loci = g.visibleLoci;
     let result;
     try {
       result = g.breed(a, b, guess);
@@ -431,6 +582,21 @@ export class UI {
       d.close();
       return;
     }
+    this.pendingHatch = { options, dist, guess, info, loci: g.visibleLoci };
+    d.close();
+    this.sound.pop();
+    this.toast(`${result.babies.length} eggs in the nest! Watch them wobble…`, 'good', 5000);
+    this.tank.syncPopulation(g);
+    g.select(null);
+  }
+
+  showClutchResult(result) {
+    const d = this.dlg.breed;
+    const g = this.game;
+    const pending = this.pendingHatch;
+    this.pendingHatch = null;
+    if (!pending) return; // clutch laid before a reload: babies simply hatch
+    const { options, dist, guess, info, loci } = pending;
     const pOf = (k) => dist.find((x) => x.dexKey === k)?.p ?? 0;
     const showBeads = loci.length <= 2;
     const winnerNames = result.winners.map((k) => dist.find((x) => x.dexKey === k)?.name ?? k).join(' / ').toLowerCase();
@@ -442,7 +608,7 @@ export class UI {
       <div class="eggs ${showBeads ? 'with-beads' : ''}">${result.babies.map((baby, i) => `
         <div class="egg"><div class="inner" style="--d:${i * 160}ms">${swatch(baby.pheno.morph, baby.pheno.gfp)}<b>${esc(baby.name)}</b>${esc(baby.pheno.name)}${
           baby.mutated?.length ? '<span class="mut">mutation!</span>' : ''}${showBeads ? geneBeads(baby.genotype, loci, { byParent: true }) : ''}</div></div>`).join('')}</div>
-      ${info.punnett ? punnettSquare(loci[0], result.mother, result.father, dist) : ''}
+      ${info.punnett ? punnettSquare(loci[0], result.mother, result.father) : ''}
       ${info.odds ? `<h3>The real odds</h3>
       <div class="choices">${options.map((o) => `
         <div class="choice ${o.dexKey === guess ? (result.correct ? 'right' : 'wrong') : ''}">${swatch(o.morph, o.gfp)}${esc(o.name)}<span class="pct">${pct(pOf(o.dexKey))}</span></div>`).join('')}</div>` : ''}
@@ -458,10 +624,11 @@ export class UI {
       }
       this.tips.show('feedBabies', { delay: 1200 });
     });
+    if (this.dlg.breed.open) this.dlg.breed.close();
+    for (const dlg of Object.values(this.dlg)) if (dlg.open) dlg.close();
     this.sound.hatch(result.babies.length);
     if (result.correct) setTimeout(() => this.sound.chime(), result.babies.length * 160);
-    this.tank.syncPopulation(g);
-    for (const baby of result.babies) this.tank.popIn(baby.id);
+    d.showModal();
   }
 
   /* ---------- morph book ---------- */
@@ -517,16 +684,25 @@ export class UI {
       <div class="row">
         <button type="button" class="btn quiet" data-help>How to play</button>
         <button type="button" class="btn quiet" data-level>This level</button>
+        <button type="button" class="btn quiet" data-stickers>Stickers</button>
       </div>
       <div class="row">
         <button type="button" class="btn quiet" data-sound aria-pressed="${this.sound.enabled}">Sound: ${this.sound.enabled ? 'on' : 'off'}</button>
-        <button type="button" class="btn danger" data-reset>Start over</button>
+        <button type="button" class="btn quiet" data-gentle aria-pressed="${g.settings.gentle}">Heron: ${g.settings.gentle ? 'chases' : 'eats'}</button>
       </div>
+      <div class="row"><button type="button" class="btn danger" data-reset>Start over</button></div>
       <div class="row"><button type="button" class="btn quiet" data-close>Close</button></div>
     </div>`;
     $('[data-close]', d).addEventListener('click', () => d.close());
     $('[data-help]', d).addEventListener('click', () => { d.close(); this.openHelp(); });
     $('[data-level]', d).addEventListener('click', () => { d.close(); this.openLevel(g.levelInfo, []); });
+    $('[data-stickers]', d).addEventListener('click', () => { d.close(); this.openStickers(); });
+    $('[data-gentle]', d).addEventListener('click', (e) => {
+      g.settings.gentle = !g.settings.gentle;
+      g.emit('settings');
+      e.currentTarget.textContent = `Heron: ${g.settings.gentle ? 'chases' : 'eats'}`;
+      e.currentTarget.setAttribute('aria-pressed', String(g.settings.gentle));
+    });
     $('[data-sound]', d).addEventListener('click', (e) => {
       this.sound.enabled = !this.sound.enabled;
       g.settings.sound = this.sound.enabled;

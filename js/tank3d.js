@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { TANK } from './game.js';
-import { buildAxolotl, buildPellet, disposeAxolotl } from './axolotl3d.js';
+import { buildAxolotl, buildPellet, buildEgg, disposeAxolotl } from './axolotl3d.js';
 import { buildHeron } from './heron3d.js';
 import * as Decor from './decor3d.js';
 
@@ -205,7 +205,7 @@ export class Tank3D {
     this.uvLight.intensity = on ? 18 : 0;
     this.floorMat.emissiveIntensity = on ? 0.04 : 0.16;
     this.renderer.toneMappingExposure = on ? 0.9 : 1.05;
-    for (const e of this.entities.values()) e.rig.setGlow(on);
+    for (const e of this.entities.values()) if (!e.egg) e.rig.setGlow(on);
   }
 
   /* ---------- entities ---------- */
@@ -213,21 +213,23 @@ export class Tank3D {
     const seen = new Set();
     for (const a of game.population) {
       seen.add(a.id);
+      const existing = this.entities.get(a.id);
+      if (existing && existing.egg !== a.egg) this.dropEntity(a.id); // egg just hatched: swap egg for axolotl
       if (!this.entities.has(a.id)) {
-        const rig = buildAxolotl(a.pheno);
-        for (const m of rig.hit) m.userData.axolotlId = a.id;
-        rig.setGlow(this.uv);
-        this.scene.add(rig.group);
-        this.entities.set(a.id, { rig, a, pop: 0 });
+        if (a.egg) {
+          const egg = buildEgg(a.pheno);
+          this.scene.add(egg.group);
+          this.entities.set(a.id, { egg: true, rig: egg, a, pop: 0 });
+        } else {
+          const rig = buildAxolotl(a.pheno);
+          for (const m of rig.hit) m.userData.axolotlId = a.id;
+          rig.setGlow(this.uv);
+          this.scene.add(rig.group);
+          this.entities.set(a.id, { egg: false, rig, a, pop: existing ? 1 : 0 });
+        }
       }
     }
-    for (const [id, e] of this.entities) {
-      if (!seen.has(id)) {
-        this.scene.remove(e.rig.group);
-        disposeAxolotl(e.rig);
-        this.entities.delete(id);
-      }
-    }
+    for (const id of [...this.entities.keys()]) if (!seen.has(id)) this.dropEntity(id);
     const pelletIds = new Set(game.pellets.map((p) => p.id));
     for (const p of game.pellets) {
       if (!this.pelletMeshes.has(p.id)) {
@@ -243,6 +245,14 @@ export class Tank3D {
         this.pelletMeshes.delete(id);
       }
     }
+  }
+
+  dropEntity(id) {
+    const e = this.entities.get(id);
+    if (!e) return;
+    this.scene.remove(e.rig.group);
+    if (e.egg) e.rig.dispose(); else disposeAxolotl(e.rig);
+    this.entities.delete(id);
   }
 
   popIn(id) {
@@ -261,9 +271,15 @@ export class Tank3D {
   pickAxolotl(clientX, clientY) {
     this.setPointer(clientX, clientY);
     const meshes = [];
-    for (const e of this.entities.values()) meshes.push(...e.rig.hit);
+    for (const e of this.entities.values()) if (!e.egg) meshes.push(...e.rig.hit);
     const hits = this.raycaster.intersectObjects(meshes, false);
     return hits.length ? hits[0].object.userData.axolotlId : null;
+  }
+
+  /** World point → normalised screen coords (0..1, y down). */
+  project(x, y, z) {
+    const v = new THREE.Vector3(x, y, z).project(this.camera);
+    return { x: (v.x + 1) / 2, y: (1 - v.y) / 2 };
   }
 
   pickFloor(clientX, clientY) {
@@ -335,6 +351,11 @@ export class Tank3D {
     this.updateCamera(game.selected, dt);
     for (const e of this.entities.values()) {
       const a = e.a;
+      if (e.egg) {
+        e.rig.group.position.set(a.x, 0.17, a.z);
+        e.rig.update(a.hatchIn, t + a.id);
+        continue;
+      }
       const speed = Math.hypot(a.vx, a.vz);
       const s = a.scale;
       if (e.pop > 0) e.pop = Math.max(0, e.pop - dt * 1.6);
