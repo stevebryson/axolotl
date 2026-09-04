@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <title>Axolotl Gene Lab</title>
+  <meta name="description" content="Breed axolotls, predict their colours, and watch evolution happen in a wild pond." />
+  <meta name="theme-color" content="#0e2a47" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Gene Lab" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" href="./icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+  <link rel="stylesheet" href="./css/style.css" />
+  <script type="importmap">{ "imports": { "three": "./vendor/three.module.min.js" } }</script>
+</head>
+<body data-mode="tank">
+  <canvas id="scene" aria-label="Axolotl tank"></canvas>
+
+  <div id="hud">
+    <header class="hud-top">
+      <div class="seg" role="tablist" aria-label="Where to play">
+        <button type="button" role="tab" data-mode="tank" aria-selected="true">Tank</button>
+        <button type="button" role="tab" data-mode="pond" aria-selected="false">Wild pond</button>
+      </div>
+      <div class="hud-actions">
+        <button type="button" class="icon-btn" id="btn-feed" aria-label="Drop food"><span aria-hidden="true">🪱</span></button>
+        <button type="button" class="icon-btn" id="btn-uv" aria-label="UV lamp" aria-pressed="false"><span aria-hidden="true">🔦</span></button>
+        <button type="button" class="icon-btn" id="btn-dex" aria-label="Morph book"><span aria-hidden="true">📖</span></button>
+        <button type="button" class="icon-btn" id="btn-stats" aria-label="Population chart" hidden><span aria-hidden="true">📊</span></button>
+        <button type="button" class="icon-btn" id="btn-menu" aria-label="Menu"><span aria-hidden="true">☰</span></button>
+      </div>
+    </header>
+
+    <button type="button" id="level-pill" class="level-pill" aria-label="Current level"></button>
+
+    <div id="pond-bar" hidden>
+      <div class="chips" id="substrate-chips" role="radiogroup" aria-label="Pond floor"></div>
+      <button type="button" class="btn small" id="btn-next-gen">Next generation</button>
+    </div>
+
+    <div id="toast" role="status" aria-live="polite"></div>
+
+    <div id="hint" class="hint">Tap an axolotl to pick it up</div>
+
+    <section id="card" class="sheet" hidden aria-live="polite"></section>
+
+    <div id="joystick" hidden aria-hidden="true"><div class="knob"></div></div>
+  </div>
+
+  <dialog id="dlg-breed" class="dlg"></dialog>
+  <dialog id="dlg-dex" class="dlg"></dialog>
+  <dialog id="dlg-stats" class="dlg"></dialog>
+  <dialog id="dlg-menu" class="dlg"></dialog>
+  <dialog id="dlg-help" class="dlg"></dialog>
+  <dialog id="dlg-level" class="dlg"></dialog>
+
+  <noscript><p class="nojs">Axolotl Gene Lab needs JavaScript to run.</p></noscript>
+  <script type="module" src="./js/main.js"></script>
+</body>
+</html>
