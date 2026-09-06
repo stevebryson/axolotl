@@ -27,6 +27,7 @@
       </div>
       <div class="hud-actions">
         <button type="button" class="icon-btn" id="btn-feed" aria-label="Drop food"><span aria-hidden="true">🪱</span></button>
+        <button type="button" class="icon-btn dirt-btn" id="btn-clean" aria-label="Clean the tank" style="--dirt:0"><span aria-hidden="true">🧽</span></button>
         <button type="button" class="icon-btn" id="btn-uv" aria-label="UV lamp" aria-pressed="false"><span aria-hidden="true">🔦</span></button>
         <button type="button" class="icon-btn" id="btn-dex" aria-label="Morph book"><span aria-hidden="true">📖</span></button>
         <button type="button" class="icon-btn" id="btn-stats" aria-label="Population chart" hidden><span aria-hidden="true">📊</span></button>
@@ -48,6 +49,15 @@
     <section id="card" class="sheet" hidden aria-live="polite"></section>
 
     <div id="joystick" hidden aria-hidden="true"><div class="knob"></div></div>
+
+    <div id="clean-mode" hidden>
+      <div class="clean-top">
+        <p class="clean-title">Scrub the glass!</p>
+        <p class="clean-sub">Swipe up and down, fast.</p>
+        <div class="clean-meter"><span></span></div>
+      </div>
+      <button type="button" class="btn quiet" id="clean-done">Done</button>
+    </div>
   </div>
 
   <dialog id="dlg-breed" class="dlg"></dialog>

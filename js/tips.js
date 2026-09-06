@@ -17,6 +17,9 @@ export const TIPS = Object.freeze({
   pondCave:  { anchor: '#hint',         text: 'The glowing ring is the cave. It is the safe spot.' },
   heron:     { anchor: '#hint',         text: 'Heron! Steer your axolotl into the cave, fast!' },
   nextGen:   { anchor: '#btn-next-gen', text: 'Now press Next generation and watch the colours change.' },
+  dirty:     { anchor: '#btn-clean',    text: 'The water is getting murky. Tap the sponge and scrub!' },
+  crowded:   { anchor: null,            text: 'Too many grown-ups! They nip the babies. Release some grown-ups to the wild.' },
+  gulp:      { anchor: null,            text: 'Axolotls swim up to gulp a bubble of air, then sink back down.' },
 });
 
 export class Tips {

@@ -254,7 +254,7 @@ export function buildAxolotl(pheno) {
     for (const l of legs) l.group.rotation.x = Math.sin(t * 7 + l.phase) * 0.5 * step;
   };
 
-  return { group, hit, update, setGlow, skin, fin, ownsMaterials: pheno.gfp };
+  return { group, hit, update, setGlow, skin, fin, legs: legs.map((l) => l.group), ownsMaterials: pheno.gfp };
 }
 
 const EGG_JELLY = new THREE.MeshPhysicalMaterial({ color: '#dff6ff', transparent: true, opacity: 0.55, roughness: 0.15, clearcoat: 1, clearcoatRoughness: 0.1, depthWrite: false });

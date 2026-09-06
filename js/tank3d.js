@@ -163,6 +163,20 @@ export class Tank3D {
     this.bubbles = new THREE.Points(bg, new THREE.PointsMaterial({ color: '#e8fbff', size: 0.09, transparent: true, opacity: 0.7, depthWrite: false }));
     env.add(this.bubbles);
 
+    /* Floating muck: only visible as the tank gets dirty. */
+    const debrisCount = 90;
+    const dpos = new Float32Array(debrisCount * 3);
+    this.debrisSeeds = [];
+    for (let i = 0; i < debrisCount; i++) {
+      const sd = { x: rand(-W / 2 + 0.3, W / 2 - 0.3), y: rand(0.2, H - 0.6), z: rand(-D / 2 + 0.3, D / 2 - 0.3), s: rand(0.05, 0.2), ph: rand(0, 6) };
+      this.debrisSeeds.push(sd);
+      dpos.set([sd.x, sd.y, sd.z], i * 3);
+    }
+    const dg = new THREE.BufferGeometry();
+    dg.setAttribute('position', new THREE.BufferAttribute(dpos, 3));
+    this.debris = new THREE.Points(dg, new THREE.PointsMaterial({ color: '#6b5a3a', size: 0.11, transparent: true, opacity: 0, depthWrite: false }));
+    env.add(this.debris);
+
     /* Heron shadow. */
     this.shadow = new THREE.Mesh(new THREE.CircleGeometry(1.4, 24),
       new THREE.MeshBasicMaterial({ color: '#000000', transparent: true, opacity: 0, depthWrite: false }));
@@ -192,9 +206,26 @@ export class Tank3D {
     this.hemi.groundColor.set(pond ? '#2e3a24' : '#4a3a2a');
     this.tankDecor.visible = !pond;
     this.pondDecor.visible = pond;
+    this.setDirt(pond ? 0 : (this.dirt ?? 0));
     if (this.backdropMat.map) this.backdropMat.map.dispose();
     this.backdropMat.map = Decor.backdropTexture(pond);
     this.backdropMat.needsUpdate = true;
+  }
+
+  /** Murk: water browns and thickens, light dims, caustics fade, muck drifts. */
+  setDirt(d) {
+    this.dirt = d;
+    const pond = this.tankDecor.visible === false;
+    const clean = new THREE.Color(pond ? '#5c9b6a' : '#3fb7d8');
+    const filthy = new THREE.Color('#5c5a22');
+    this.waterMat.color.copy(clean).lerp(filthy, d);
+    this.waterMat.opacity = (pond ? 0.18 : 0.12) + d * 0.48;
+    this.debris.material.opacity = Math.max(0, d - 0.15) * 0.9;
+    if (!this.uv) {
+      this.hemi.intensity = 1.1 * (1 - 0.35 * d);
+      this.sun.intensity = 1.6 * (1 - 0.3 * d);
+      this.floorMat.emissiveIntensity = 0.16 * (1 - d);
+    }
   }
 
   setUv(on) {
@@ -204,6 +235,7 @@ export class Tank3D {
     this.fill.intensity = on ? 0.05 : 0.5;
     this.uvLight.intensity = on ? 18 : 0;
     this.floorMat.emissiveIntensity = on ? 0.04 : 0.16;
+    if (!on) this.setDirt(this.dirt ?? 0);
     this.renderer.toneMappingExposure = on ? 0.9 : 1.05;
     for (const e of this.entities.values()) if (!e.egg) e.rig.setGlow(on);
   }
@@ -326,13 +358,14 @@ export class Tank3D {
     const wantTarget = new THREE.Vector3();
     if (sel) {
       /* Medium shot: axolotl about a quarter of the screen tall, floor around it still tappable. */
+      const lift = sel.y * 0.85; // follow it up when it swims for air
       if (this.portrait) {
-        wantTarget.set(sel.x, -2.6, sel.z);
-        wantPos.set(sel.x * 0.9, 6.2, sel.z + 7.6);
+        wantTarget.set(sel.x, -2.6 + lift, sel.z);
+        wantPos.set(sel.x * 0.9, 6.2 + lift * 0.6, sel.z + 7.6);
       } else {
         /* Landscape docks the info sheet on the right, so frame the axolotl left of centre. */
-        wantTarget.set(sel.x + 1.6, 0.1, sel.z);
-        wantPos.set(sel.x * 0.9 + 1.6, 4.8, sel.z + 6.6);
+        wantTarget.set(sel.x + 1.6, 0.1 + lift, sel.z);
+        wantPos.set(sel.x * 0.9 + 1.6, 4.8 + lift * 0.6, sel.z + 6.6);
       }
     } else {
       wantPos.copy(this.homePos);
@@ -362,10 +395,17 @@ export class Tank3D {
       const popScale = 1 + Math.sin((1 - e.pop) * Math.PI) * 0.35 * e.pop;
       e.rig.group.scale.setScalar(s * popScale);
       const bob = Math.sin(t * 1.6 + a.id) * 0.03;
-      e.rig.group.position.set(a.x, 0.3 * s + bob + Math.min(0.25, speed * 0.08), a.z);
+      e.rig.group.position.set(a.x, 0.3 * s + a.y + bob + Math.min(0.25, speed * 0.08), a.z);
       e.rig.group.rotation.y = a.heading;
       e.rig.group.rotation.z = -Math.sin(t * 1.6 + a.id) * 0.02;
-      e.rig.update(t + a.id * 0.7, speed);
+      /* Nose up while rising, nose down while sinking. */
+      e.rig.group.rotation.x = THREE.MathUtils.lerp(e.rig.group.rotation.x, -a.vy * 0.28, dt * 4);
+      const legs = e.rig.legs;
+      for (let i = 0; i < legs.length; i++) {
+        const grow = a.regrow && a.regrow.leg === i ? Math.max(0.08, 1 - a.regrow.t / 60) : 1;
+        legs[i].scale.setScalar(grow);
+      }
+      e.rig.update(t + a.id * 0.7, Math.hypot(speed, a.vy * 1.5));
     }
     for (const [id, m] of this.pelletMeshes) {
       const p = game.pellets.find((q) => q.id === id);
@@ -399,6 +439,14 @@ export class Tank3D {
       bp.setXYZ(i, sd.x + Math.sin(t * 2 + i) * 0.05, sd.y, sd.z);
     }
     bp.needsUpdate = true;
+    if (this.debris.material.opacity > 0) {
+      const dp = this.debris.geometry.attributes.position;
+      for (let i = 0; i < this.debrisSeeds.length; i++) {
+        const sd = this.debrisSeeds[i];
+        dp.setXYZ(i, sd.x + Math.sin(t * 0.4 + sd.ph) * 0.3, sd.y + Math.sin(t * 0.7 + sd.ph * 2) * 0.15, sd.z + Math.cos(t * 0.5 + sd.ph) * 0.2);
+      }
+      dp.needsUpdate = true;
+    }
     const sp = this.surface.geometry.attributes.position;
     for (let i = 0; i < sp.count; i++) {
       const x = this.surfaceBase[i * 3];

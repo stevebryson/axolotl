@@ -73,6 +73,16 @@ export class Sound {
     this.#tone({ freq: 900, to: 90, type: 'square', dur: 0.14, gain: 0.5 });
   }
 
+  /** Sponge squeak. */
+  scrub() {
+    this.#tone({ freq: 700 + Math.random() * 300, to: 1200, type: 'triangle', dur: 0.08, gain: 0.3 });
+  }
+
+  /** Ouch: a nip. */
+  ouch() {
+    this.#tone({ freq: 420, to: 300, type: 'square', dur: 0.1, gain: 0.35 });
+  }
+
   /** Generation turnover: gentle descending flourish. */
   whoosh() {
     this.#tone({ freq: 700, to: 150, type: 'sine', dur: 0.7, gain: 0.4 });

@@ -30,6 +30,10 @@ export const LIMITS = Object.freeze({
   heronWarnSeconds: 4,
   hatchSeconds: 7,
   hatchStagger: 1.3,
+  swimHeight: 3.9,        // how high a surface trip goes (water surface is at height - 0.4)
+  regrowSeconds: 60,      // a nipped leg grows back in this long
+  nipCheckSeconds: 8,     // how often crowded adults get a chance to nip
+  dirtyThreshold: 0.6,    // above this the water is officially murky
 });
 
 const SAVE_VERSION = 2;
@@ -52,6 +56,8 @@ export const BADGES = Object.freeze([
   { id: 'evolution',    emoji: '🌿', name: 'Evolution',         text: 'Reached pond generation five.' },
   { id: 'rainbow',      emoji: '🌈', name: 'Rainbow tank',      text: 'Found every colour in the morph book.' },
   { id: 'photographer', emoji: '📷', name: 'Say cheese',        text: 'Took a photo of an axolotl.' },
+  { id: 'cleaner',      emoji: '🧽', name: 'Squeaky clean',     text: 'Scrubbed the tank sparkling clean.' },
+  { id: 'regrow',       emoji: '🦎', name: 'Good as new',       text: 'Watched a nipped leg grow back.' },
 ]);
 
 const MORPH_BADGE = { leucistic: 'pink', golden: 'golden', melanoid: 'melanoid', axanthic: 'axanthic', copper: 'copper' };
@@ -116,6 +122,11 @@ export class Axolotl {
     this.age = o.age ?? 1; // 0 baby .. 1 adult
     this.hunger = o.hunger ?? 0.3; // 0 full .. 1 starving
     this.hatchIn = o.hatchIn ?? 0; // seconds until this egg hatches; 0 = already hatched
+    this.y = o.y ?? 0;             // height above the floor
+    this.vy = 0;
+    this.swim = 'floor';           // floor | rising | surface | sinking
+    this.swimTimer = rand(15, 60);
+    this.regrow = o.regrow && Number.isInteger(o.regrow.leg) && o.regrow.t > 0 ? { leg: o.regrow.leg, t: o.regrow.t } : null;
     this.x = o.x ?? 0;
     this.z = o.z ?? 0;
     this.heading = o.heading ?? 0;
@@ -154,6 +165,8 @@ export class Axolotl {
       parents: this.parents, age: +this.age.toFixed(3), hunger: +this.hunger.toFixed(3),
       x: +this.x.toFixed(2), z: +this.z.toFixed(2), heading: +this.heading.toFixed(3),
       hatchIn: +this.hatchIn.toFixed(2),
+      y: +this.y.toFixed(2),
+      regrow: this.regrow ? { leg: this.regrow.leg, t: +this.regrow.t.toFixed(1) } : null,
     };
   }
 }
@@ -176,6 +189,10 @@ export class Game {
     this.badges = new Set();
     this.heronDodged = 0;
     this.pendingClutch = null;
+    this.dirt = 0;              // 0 clean .. 1 filthy
+    this.dirtyAnnounced = false;
+    this.nipTimer = LIMITS.nipCheckSeconds;
+    this.crowdedAnnounced = false;
     this.selectedId = null;
     this.heron = { phase: 'idle', timer: rand(LIMITS.heronMinSeconds, LIMITS.heronMaxSeconds), progress: 0 };
     this.listeners = new Map();
@@ -210,6 +227,9 @@ export class Game {
     this.badges = new Set();
     this.heronDodged = 0;
     this.pendingClutch = null;
+    this.dirt = 0;
+    this.dirtyAnnounced = false;
+    this.crowdedAnnounced = false;
     this.selectedId = null;
     /* Level 1 starter pair: both carry one hidden Pink bead, so the first clutch is a clean 3:1. */
     this.addAxolotl({ sex: 'F', x: -2, z: 0.5, age: 1, genotype: makeGenotype({ D: [1, 0] }) });
@@ -556,6 +576,72 @@ export class Game {
     for (const a of this.population) this.updateAxolotl(a, dt);
     this.separate();
     if (this.mode === 'pond') this.updateHeron(dt);
+    else {
+      this.updateDirt(dt);
+      this.updateCrowding(dt);
+    }
+  }
+
+  /* ---------- crowding: adults nip juveniles when they outnumber them ---------- */
+  get crowded() {
+    const adults = this.population.filter((a) => a.adult && !a.egg).length;
+    const juveniles = this.population.filter((a) => !a.adult && !a.egg).length;
+    return juveniles > 0 && adults >= 3 && adults > juveniles;
+  }
+
+  updateCrowding(dt) {
+    for (const a of this.population) {
+      if (!a.regrow) continue;
+      a.regrow.t -= dt;
+      if (a.regrow.t <= 0) {
+        a.regrow = null;
+        this.award('regrow');
+        this.emit('regrown', a);
+      }
+    }
+    const crowded = this.crowded;
+    if (!crowded) { this.crowdedAnnounced = false; return; }
+    if (!this.crowdedAnnounced) { this.crowdedAnnounced = true; this.emit('crowded'); }
+    this.nipTimer -= dt;
+    if (this.nipTimer > 0) return;
+    this.nipTimer = LIMITS.nipCheckSeconds;
+    const targets = this.population.filter((a) => !a.adult && !a.egg && !a.regrow);
+    if (!targets.length || Math.random() > 0.6) return;
+    const baby = targets[Math.floor(Math.random() * targets.length)];
+    const adults = this.population.filter((a) => a.adult && !a.egg);
+    const biter = adults[Math.floor(Math.random() * adults.length)];
+    baby.regrow = { leg: Math.floor(Math.random() * 4), t: LIMITS.regrowSeconds };
+    baby.eatFlash = 1;
+    biter.target = { x: baby.x, z: baby.z };
+    this.emit('nipped', { baby, biter });
+  }
+
+  /* ---------- dirt ---------- */
+  updateDirt(dt) {
+    const bodies = this.population.filter((a) => !a.egg).length;
+    const rate = 0.0008 + 0.00025 * bodies + 0.0006 * this.pellets.length;
+    this.dirt = Math.min(1, this.dirt + rate * dt);
+    if (this.dirt >= LIMITS.dirtyThreshold && !this.dirtyAnnounced) {
+      this.dirtyAnnounced = true;
+      this.emit('dirty');
+    }
+  }
+
+  get dirty() {
+    return this.dirt >= LIMITS.dirtyThreshold;
+  }
+
+  /** One scrub stroke. Returns true when the tank just became clean. */
+  clean(amount = 0.12) {
+    if (this.dirt <= 0) return false;
+    this.dirt = Math.max(0, this.dirt - amount);
+    this.emit('dirtChanged', this.dirt);
+    if (this.dirt > 0) return false;
+    this.pellets = [];
+    this.dirtyAnnounced = false;
+    this.award('cleaner');
+    this.emit('cleaned');
+    return true;
   }
 
   updatePellets(dt) {
@@ -569,11 +655,12 @@ export class Game {
       return;
     }
     if (!a.adult) {
-      a.age = Math.min(1, a.age + dt / LIMITS.growSeconds);
+      a.age = Math.min(1, a.age + (dt / LIMITS.growSeconds) * (1 - 0.5 * this.dirt));
       if (a.adult) this.emit('grownUp', a);
     }
     a.hunger = Math.min(1, a.hunger + dt / LIMITS.hungerSeconds);
     if (a.eatFlash > 0) a.eatFlash -= dt;
+    this.updateSwim(a, dt);
 
     let dx = 0;
     let dz = 0;
@@ -591,7 +678,7 @@ export class Game {
         const tz = a.target.z - a.z;
         const d = Math.hypot(tx, tz);
         if (d < 0.18) {
-          if (a.target.pellet) this.eat(a, a.target.pellet);
+          if (a.target.pellet && a.y < 0.5) this.eat(a, a.target.pellet);
           a.target = null;
         } else {
           dx = tx / d;
@@ -602,7 +689,7 @@ export class Game {
     }
 
     if (moving) {
-      const s = a.speed;
+      const s = a.speed * (1 - 0.4 * this.dirt) * (a.regrow ? 0.8 : 1);
       a.vx += (dx * s - a.vx) * Math.min(1, dt * 6);
       a.vz += (dz * s - a.vz) * Math.min(1, dt * 6);
     } else {
@@ -624,6 +711,37 @@ export class Game {
       diff = Math.atan2(Math.sin(diff), Math.cos(diff));
       a.heading += diff * Math.min(1, dt * 7);
     }
+  }
+
+  /**
+   * Vertical life: axolotls sit on the floor, and every so often kick up to gulp air at the surface,
+   * hang there a moment, then drift back down. The player only steers horizontally.
+   */
+  updateSwim(a, dt) {
+    const top = LIMITS.swimHeight;
+    switch (a.swim) {
+      case 'floor':
+        a.swimTimer -= dt;
+        if (a.swimTimer <= 0) { a.swim = 'rising'; }
+        a.vy += (0 - a.vy) * Math.min(1, dt * 4);
+        break;
+      case 'rising':
+        a.vy += (1.6 - a.vy) * Math.min(1, dt * 3);
+        if (a.y >= top) { a.swim = 'surface'; a.swimTimer = rand(0.8, 2.2); this.emit('gulp', a); }
+        break;
+      case 'surface':
+        a.swimTimer -= dt;
+        a.vy += (0 - a.vy) * Math.min(1, dt * 6);
+        if (a.swimTimer <= 0) a.swim = 'sinking';
+        break;
+      case 'sinking':
+        a.vy += (-0.9 - a.vy) * Math.min(1, dt * 2);
+        if (a.y <= 0) { a.swim = 'floor'; a.swimTimer = rand(20, 70); a.vy = 0; }
+        break;
+      default:
+        a.swim = 'floor';
+    }
+    a.y = Math.max(0, Math.min(top, a.y + a.vy * dt));
   }
 
   think(a, dt) {
@@ -674,6 +792,7 @@ export class Game {
 
   /** Player-controlled axolotls can eat by walking over a pellet. */
   tryEatNearby(a) {
+    if (a.y > 0.5) return false;
     for (const p of this.pellets) {
       if (p.y <= 0.13 && Math.hypot(p.x - a.x, p.z - a.z) < 0.4) { this.eat(a, p); return true; }
     }
@@ -747,6 +866,7 @@ export class Game {
       levelCorrect: this.levelCorrect,
       badges: [...this.badges],
       heronDodged: this.heronDodged,
+      dirt: +this.dirt.toFixed(3),
     };
   }
 
@@ -776,6 +896,9 @@ export class Game {
     };
     this.badges = new Set(Array.isArray(data.badges) ? data.badges.filter((b) => BADGES.some((x) => x.id === b)) : []);
     this.heronDodged = Number.isInteger(data.heronDodged) ? data.heronDodged : 0;
+    this.dirt = typeof data.dirt === 'number' ? Math.min(1, Math.max(0, data.dirt)) : 0;
+    this.dirtyAnnounced = this.dirt >= LIMITS.dirtyThreshold;
+    this.crowdedAnnounced = false;
     this.pendingClutch = null;
     this.level = level;
     this.levelCorrect = Number.isInteger(data.levelCorrect) ? data.levelCorrect : 0;

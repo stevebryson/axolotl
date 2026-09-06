@@ -348,6 +348,41 @@ body[data-uv="on"] {
 .fact { background: #fff7d6; border-left: 5px solid #f2c94c; border-radius: var(--r-md); padding: 10px 12px; font-size: 14px; }
 .sheet-actions #card-photo { flex: 0 0 auto; padding-inline: 14px; }
 
+/* ---------- dirt button & scrub mode ---------- */
+.dirt-btn { position: relative; }
+.dirt-btn::before {
+  content: '';
+  position: absolute; inset: -3px;
+  border-radius: 50%;
+  background: conic-gradient(#b8863b calc(var(--dirt) * 100%), transparent 0);
+  z-index: -1;
+}
+.dirt-btn.dirty { animation: dirt-pulse 1.4s ease-in-out infinite; }
+@keyframes dirt-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.14); } }
+#clean-mode {
+  position: fixed; inset: 0; z-index: 6;
+  display: flex; flex-direction: column; justify-content: space-between; align-items: center;
+  padding: calc(var(--safe-t) + 80px) 20px calc(var(--safe-b) + 24px);
+  background: radial-gradient(60% 40% at 50% 50%, rgba(255,255,255,0.05), rgba(0,0,0,0.25));
+  touch-action: none;
+  cursor: grab;
+}
+.clean-top { text-align: center; color: #fff; text-shadow: 0 2px 6px rgba(0,0,0,0.6); pointer-events: none; }
+.clean-title { margin: 0; font-size: 28px; font-weight: 900; }
+.clean-sub { margin: 4px 0 12px; font-size: 16px; font-weight: 700; }
+.clean-meter { width: min(70vw, 320px); height: 18px; margin: 0 auto; border-radius: var(--r-pill); background: rgba(0,0,0,0.35); border: 2px solid rgba(255,255,255,0.6); overflow: hidden; }
+.clean-meter span { display: block; height: 100%; background: linear-gradient(90deg, #b8863b, #6b5a3a); transition: width 120ms linear; }
+.sponge {
+  position: fixed; width: 90px; height: 64px; margin: -32px 0 0 -45px;
+  border-radius: 14px; background: #ffe066; border: 3px solid #d9b52a;
+  box-shadow: inset 0 -12px 0 #7fd0ff, 0 6px 14px rgba(0,0,0,0.35);
+  pointer-events: none; z-index: 7;
+}
+.sparkle { position: fixed; font-size: 24px; pointer-events: none; z-index: 7; animation: sparkle 700ms ease-out forwards; }
+@keyframes sparkle { from { opacity: 1; transform: translate(-50%,-50%) scale(0.6); } to { opacity: 0; transform: translate(-50%,-120%) scale(1.3); } }
+.tag.ouch { background: #ffd0c2; color: #7a2a12; }
+.tag.dirty { background: #e6d9b8; color: #5a4210; }
+
 /* ---------- tips ---------- */
 #tip {
   position: fixed;

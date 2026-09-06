@@ -94,6 +94,7 @@ export class UI {
     this.applyMode(game.mode);
     this.applyLevel();
     this.armIdleNudge();
+    setInterval(() => this.updateDirtButton(), 2000); // murk creeps up slowly; keep the ring and water in step
   }
 
   /** After 20 s with nothing picked up, pulse the hint so a stuck player knows where to start. */
@@ -114,6 +115,9 @@ export class UI {
       this.toast(p ? 'Worm pellet dropped' : 'Plenty of food in there already', p ? '' : 'warn');
     });
     $('#btn-uv').addEventListener('click', () => this.setUv(!this.uv));
+    $('#btn-clean').addEventListener('click', () => this.enterCleanMode());
+    $('#clean-done').addEventListener('click', () => this.exitCleanMode());
+    this.bindScrub();
     $('#btn-dex').addEventListener('click', () => this.openDex());
     $('#btn-stats').addEventListener('click', () => this.openStats());
     $('#btn-menu').addEventListener('click', () => this.openMenu());
@@ -137,6 +141,17 @@ export class UI {
     });
     g.on('clutchHatched', (result) => this.showClutchResult(result));
     g.on('badge', (b) => this.toast(`Sticker earned: ${b.emoji} ${b.name}`, 'good', 4000));
+    g.on('dirty', () => { this.tips.show('dirty', { delay: 300 }); this.toast('The water is murky. Time to clean the tank!', 'warn', 4500); this.updateDirtButton(); });
+    g.on('dirtChanged', () => this.updateDirtButton());
+    g.on('cleaned', () => { this.sound.chime(); this.toast('Sparkling clean!', 'good'); this.exitCleanMode(); this.updateDirtButton(); });
+    g.on('crowded', () => { this.tips.show('crowded', { delay: 300 }); this.toast('Crowded tank: the grown-ups are getting nippy.', 'warn', 4500); });
+    g.on('nipped', ({ baby, biter }) => {
+      this.sound.ouch();
+      this.toast(`Ouch! ${biter.name} nipped ${baby.name}'s leg. It will grow back. Release some grown-ups!`, 'bad', 5000);
+      if (baby.id === g.selectedId) this.renderCard(baby);
+    });
+    g.on('regrown', (a) => { this.toast(`${a.name}'s leg has grown back, good as new.`, 'good'); if (a.id === g.selectedId) this.renderCard(a); });
+    g.on('gulp', (a) => { if (a.id === g.selectedId) this.tips.show('gulp', { delay: 100 }); });
     g.on('ate', ({ axolotl }) => { this.sound.eat(); if (axolotl.id === g.selectedId) this.renderCard(axolotl); });
     g.on('heronWarning', () => { this.sound.alarm(); this.toast('A heron is coming! Hide in the cave!', 'warn'); this.tips.show('heron', { delay: 100 }); });
     g.on('heron', (s) => {
@@ -237,6 +252,8 @@ export class UI {
     for (const b of document.querySelectorAll('.seg [data-mode]')) b.setAttribute('aria-selected', String(b.dataset.mode === mode));
     this.pondBar.hidden = mode !== 'pond';
     $('#btn-stats').hidden = mode !== 'pond';
+    $('#btn-clean').hidden = mode !== 'tank';
+    this.updateDirtButton();
     this.tank.setMode(mode);
     this.tank.setSubstrate(this.game.substrateInfo);
     this.renderSubstrateChips();
@@ -301,6 +318,8 @@ export class UI {
       a.adult ? '' : `<span class="tag baby">Baby ${Math.round(a.age * 100)}%</span>`,
       a.hunger > 0.6 ? '<span class="tag hungry">Hungry</span>' : '',
       a.mutated?.length ? '<span class="tag new">Mutation!</span>' : '',
+      a.regrow ? `<span class="tag ouch">Leg regrowing ${Math.ceil(a.regrow.t)}s</span>` : '',
+      g.dirty && g.mode === 'tank' ? '<span class="tag dirty">Slowed by dirty water</span>' : '',
       `<span class="tag">Gen ${a.generation}</span>`,
     ].join('');
     const pond = g.mode === 'pond';
@@ -341,6 +360,64 @@ export class UI {
       btn.title = g.population.length + LIMITS.clutch > LIMITS.population ? 'Tank full' : `No grown-up ${a.sex === 'F' ? 'male' : 'female'} to breed with`;
     }
     this.card.hidden = false;
+  }
+
+  /* ---------- cleaning ---------- */
+  updateDirtButton() {
+    const btn = $('#btn-clean');
+    btn.style.setProperty('--dirt', this.game.dirt.toFixed(3));
+    btn.classList.toggle('dirty', this.game.dirty);
+    this.tank.setDirt(this.game.mode === 'tank' ? this.game.dirt : 0);
+    const meter = $('#clean-mode .clean-meter span');
+    if (meter) meter.style.width = `${Math.round(this.game.dirt * 100)}%`;
+  }
+
+  enterCleanMode() {
+    if (this.game.dirt <= 0.02) { this.toast('The tank is already clean. Nice!', 'good'); return; }
+    this.game.select(null);
+    this.updateDirtButton();
+    $('#clean-mode').hidden = false;
+    this.sound.pop();
+  }
+
+  exitCleanMode() {
+    $('#clean-mode').hidden = true;
+    this.sponge?.remove();
+    this.sponge = null;
+  }
+
+  /** Swipes on the overlay scrub. Every ~180 px of travel takes a bite out of the dirt. */
+  bindScrub() {
+    const el = $('#clean-mode');
+    let last = null;
+    let travel = 0;
+    const moveSponge = (x, y) => {
+      if (!this.sponge) { this.sponge = document.createElement('div'); this.sponge.className = 'sponge'; document.body.appendChild(this.sponge); }
+      this.sponge.style.left = `${x}px`;
+      this.sponge.style.top = `${y}px`;
+    };
+    el.addEventListener('pointerdown', (e) => { last = { x: e.clientX, y: e.clientY }; el.setPointerCapture(e.pointerId); moveSponge(e.clientX, e.clientY); });
+    el.addEventListener('pointermove', (e) => {
+      if (!last) return;
+      travel += Math.hypot(e.clientX - last.x, e.clientY - last.y);
+      last = { x: e.clientX, y: e.clientY };
+      moveSponge(e.clientX, e.clientY);
+      if (travel >= 180) {
+        travel = 0;
+        this.sound.scrub();
+        const sp = document.createElement('span');
+        sp.className = 'sparkle';
+        sp.textContent = '✨';
+        sp.style.left = `${e.clientX + (Math.random() - 0.5) * 60}px`;
+        sp.style.top = `${e.clientY + (Math.random() - 0.5) * 60}px`;
+        document.body.appendChild(sp);
+        setTimeout(() => sp.remove(), 800);
+        this.game.clean(0.1);
+      }
+    });
+    const up = () => { last = null; travel = 0; };
+    el.addEventListener('pointerup', up);
+    el.addEventListener('pointercancel', up);
   }
 
   openRename(a) {
